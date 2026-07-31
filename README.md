@@ -4,6 +4,8 @@ Statblock Studio is a local-first D&D 5.5e creature editor with a live
 statblock preview. It imports and exports YAML for the Obsidian Fantasy
 Statblocks plugin and can export the rendered statblock as a PNG.
 
+Live site: https://statblock-creator.pages.dev/
+
 ## Current features
 
 - Form and YAML editing modes
