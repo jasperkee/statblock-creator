@@ -1299,6 +1299,21 @@ export default function StatblockEditor() {
         <div className="toolbar">
           <input ref={fileInput} className="hidden-input" type="file" accept=".md,.txt,.yaml,.yml" onChange={handleImport} />
           <input ref={imageInput} className="hidden-input" type="file" accept="image/*" onChange={handleImage} />
+          <a
+            className="icon-button source-link toolbar-separator"
+            href="https://github.com/jasperkee/statblock-creator"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="View source on GitHub"
+            title="View source on GitHub"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+              <path
+                fill="currentColor"
+                d="M12 .5A11.5 11.5 0 0 0 8.36 22.9c.58.1.79-.25.79-.56v-2.1c-3.22.7-3.9-1.38-3.9-1.38-.52-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.17.08 1.78 1.2 1.78 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.57-.29-5.27-1.28-5.27-5.72 0-1.27.45-2.3 1.2-3.11-.12-.29-.52-1.48.11-3.07 0 0 .98-.31 3.17 1.19a10.93 10.93 0 0 1 5.76 0c2.19-1.5 3.16-1.19 3.16-1.19.64 1.59.24 2.78.12 3.07.75.82 1.2 1.85 1.2 3.11 0 4.45-2.71 5.43-5.29 5.72.42.36.79 1.07.79 2.16v3.11c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"
+              />
+            </svg>
+          </a>
           <button className="button" onClick={() => fileInput.current?.click()}>Import</button>
           <button
             className="button"

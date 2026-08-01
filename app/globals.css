@@ -112,6 +112,10 @@ button {
   flex-wrap: wrap;
 }
 
+.toolbar-separator {
+  margin-right: 8px;
+}
+
 .button,
 .icon-button,
 .segment {
@@ -511,10 +515,25 @@ button {
   background: transparent;
 }
 
+.source-link {
+  text-decoration: none;
+}
+
+.source-link svg {
+  width: 18px;
+  height: 18px;
+}
+
 .icon-button:hover {
   color: var(--danger);
   background: #fff1ef;
   border-color: #e5b4ad;
+}
+
+.source-link:hover {
+  color: var(--ink);
+  background: var(--surface-soft);
+  border-color: var(--line);
 }
 
 .icon-button:disabled {
