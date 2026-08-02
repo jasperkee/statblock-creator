@@ -701,19 +701,39 @@ button {
   background: linear-gradient(90deg, #9d3f31, #ce806b 55%, transparent);
 }
 
-.statblock-grid {
+.statblock-flow {
+  column-width: 360px;
+  column-count: 2;
+  column-gap: 28px;
+  column-fill: balance;
+}
+
+.statblock-summary {
+  break-inside: avoid-column;
+}
+
+.statblock-section-heading {
+  break-after: avoid-column;
+}
+
+.statblock-flow > .markdown,
+.statblock-export-column > .markdown {
+  display: inline-block;
+  width: 100%;
+  break-inside: avoid-column;
+  vertical-align: top;
+}
+
+.statblock-flow-export {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 28px;
+  column-count: initial;
+  column-width: auto;
 }
 
-.statblock-column {
+.statblock-export-column {
   min-width: 0;
-}
-
-.statblock-group {
-  break-inside: avoid;
-  margin-bottom: 10px;
 }
 
 .statblock p {
@@ -738,7 +758,9 @@ button {
 }
 
 .statblock .ability-grid {
-  justify-content: space-around;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
   margin: 5px 0;
 }
 
@@ -1378,10 +1400,6 @@ button {
 @media (max-width: 1050px) {
   .workspace {
     grid-template-columns: minmax(340px, 0.9fr) minmax(400px, 1.1fr);
-  }
-
-  .statblock-grid {
-    grid-template-columns: 1fr;
   }
 }
 

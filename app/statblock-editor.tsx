@@ -2,6 +2,7 @@
 
 import {
   ChangeEvent,
+  Fragment,
   KeyboardEvent as ReactKeyboardEvent,
   MutableRefObject,
   ReactNode,
@@ -496,104 +497,90 @@ function StatblockPreview({
     ["Actions", creature.actions ?? []],
     ["Bonus Actions", creature.bonus_actions ?? []],
     ["Reactions", creature.reactions ?? []],
+    ["Legendary Actions", creature.legendary_actions ?? []],
     ["Lair Actions", creature.lair_actions ?? []],
     ["Regional Effects", creature.regional_effects ?? []],
-    ["Legendary Actions", creature.legendary_actions ?? []],
   ];
   return (
     <article
       className={`statblock ${theme === "dark" ? "dark" : ""}`}
       ref={elementRef}
     >
-      <header className="statblock-head">
-        <div>
-          <h1>{creature.name || "Untitled Creature"}</h1>
-          <p className="statblock-subtitle">{subtitle}</p>
-        </div>
-        {creature.image ? (
-          <img className="portrait" src={creature.image} alt="" crossOrigin="anonymous" />
-        ) : null}
-      </header>
-      <div className="red-rule" />
-      <p><strong>Armor Class</strong> {String(creature.ac)}</p>
-      <p>
-        <strong>Hit Points</strong> {String(creature.hp)}
-        {creature.hit_dice ? ` (${creature.hit_dice})` : ""}
-      </p>
-      <p><strong>Speed</strong> {creature.speed}</p>
-      <div className="red-rule" />
-      <div className="ability-grid">
-        {ABILITY_KEYS.map((ability, index) => (
-          <div className="ability" key={ability}>
-            <strong>{ability.toUpperCase()}</strong>
-            <span>
-              {creature.stats[index]} ({signed(abilityModifier(creature.stats[index]))})
-            </span>
+      <div className="statblock-flow">
+        <div className="statblock-summary">
+          <section className="statblock-basics">
+            <header className="statblock-head">
+              <div>
+                <h1>{creature.name || "Untitled Creature"}</h1>
+                <p className="statblock-subtitle">{subtitle}</p>
+              </div>
+              {creature.image ? (
+                <img className="portrait" src={creature.image} alt="" crossOrigin="anonymous" />
+              ) : null}
+            </header>
+            <div className="red-rule" />
+            <p><strong>Armor Class</strong> {String(creature.ac)}</p>
+            <p>
+              <strong>Hit Points</strong> {String(creature.hp)}
+              {creature.hit_dice ? ` (${creature.hit_dice})` : ""}
+            </p>
+            <p><strong>Speed</strong> {creature.speed}</p>
+            <div className="red-rule" />
+            <div className="ability-grid">
+              {ABILITY_KEYS.map((ability, index) => (
+                <div className="ability" key={ability}>
+                  <strong>{ability.toUpperCase()}</strong>
+                  <span>
+                    {creature.stats[index]} ({signed(abilityModifier(creature.stats[index]))})
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="red-rule" />
+          </section>
+          <div className="statblock-details">
+            {formatList(creature.saves) ? (
+              <p><strong>Saves</strong> {formatList(creature.saves)}</p>
+            ) : null}
+            {formatList(creature.skillsaves) ? (
+              <p><strong>Skills</strong> {formatList(creature.skillsaves)}</p>
+            ) : null}
+            {[
+              ["damage_vulnerabilities", "Vulnerabilities"],
+              ["damage_resistances", "Resistances"],
+              ["damage_immunities", "Immunities"],
+              ["condition_immunities", "Condition Immunities"],
+              ["senses", "Senses"],
+              ["languages", "Languages"],
+            ].map(([key, label]) =>
+              creature[key] ? (
+                <p key={key}>
+                  <strong>{label}</strong> {stripLinkTokens(String(creature[key]))}
+                </p>
+              ) : null,
+            )}
+            <p>
+              <strong>Challenge</strong> {String(creature.cr ?? "—")} (
+              {xpForCr(creature.cr)} XP; PB {signed(proficiencyBonus(creature.cr))})
+            </p>
           </div>
+        </div>
+        {(creature.traits ?? []).map((entry, index) => (
+          <EntryPreview entry={entry} key={`trait-${index}`} />
         ))}
-      </div>
-      <div className="red-rule" />
-      <div className="statblock-grid">
-        <div className="statblock-column statblock-column-primary">
-          <div className="statblock-group">
-          {formatList(creature.saves) ? (
-            <p><strong>Saves</strong> {formatList(creature.saves)}</p>
-          ) : null}
-          {formatList(creature.skillsaves) ? (
-            <p><strong>Skills</strong> {formatList(creature.skillsaves)}</p>
-          ) : null}
-          {[
-            ["damage_vulnerabilities", "Vulnerabilities"],
-            ["damage_resistances", "Resistances"],
-            ["damage_immunities", "Immunities"],
-            ["condition_immunities", "Condition Immunities"],
-            ["senses", "Senses"],
-            ["languages", "Languages"],
-          ].map(([key, label]) =>
-            creature[key] ? (
-              <p key={key}>
-                <strong>{label}</strong> {stripLinkTokens(String(creature[key]))}
-              </p>
-            ) : null,
-          )}
-          <p>
-            <strong>Challenge</strong> {String(creature.cr ?? "—")} (
-            {xpForCr(creature.cr)} XP; PB {signed(proficiencyBonus(creature.cr))})
-          </p>
-            {(creature.traits ?? []).map((entry, index) => (
-              <EntryPreview entry={entry} key={`trait-${index}`} />
-            ))}
-          </div>
-          {sections
-            .filter(([title]) => ["Actions", "Bonus Actions", "Reactions"].includes(title))
-            .map(([title, entries]) =>
-              entries.length ? (
-                <div className="statblock-group" key={title}>
-                  <h2>{title}</h2>
-                  {entries.map((entry, index) => (
-                    <EntryPreview entry={entry} key={`${title}-${index}`} />
-                  ))}
-                </div>
-              ) : null,
-            )}
-        </div>
-        <div className="statblock-column statblock-column-secondary">
-          {sections
-            .filter(([title]) => ["Lair Actions", "Regional Effects", "Legendary Actions"].includes(title))
-            .map(([title, entries]) =>
-              entries.length || (title === "Legendary Actions" && creature.legendary_description) ? (
-                <div className="statblock-group" key={title}>
-                  <h2>{title}</h2>
-                  {title === "Legendary Actions" && creature.legendary_description ? (
-                    <p>{creature.legendary_description}</p>
-                  ) : null}
-                  {entries.map((entry, index) => (
-                    <EntryPreview entry={entry} key={`${title}-${index}`} />
-                  ))}
-                </div>
-              ) : null,
-            )}
-        </div>
+        {sections.map(([title, entries]) =>
+          entries.length || (title === "Legendary Actions" && creature.legendary_description) ? (
+            <Fragment key={title}>
+              <h2 className="statblock-section-heading">{title}</h2>
+              {title === "Legendary Actions" && creature.legendary_description ? (
+                <p className="markdown">{creature.legendary_description}</p>
+              ) : null}
+              {entries.map((entry, index) => (
+                <EntryPreview entry={entry} key={`${title}-${index}`} />
+              ))}
+            </Fragment>
+          ) : null,
+        )}
       </div>
     </article>
   );
@@ -1437,36 +1424,71 @@ export default function StatblockEditor() {
     mount.className = "export-render";
     document.body.appendChild(mount);
     const root = createRoot(mount);
-    root.render(<StatblockPreview creature={item} theme={exportTheme} />);
-    await document.fonts.ready;
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const statblock = mount.querySelector(".statblock") as HTMLElement;
-    await inlineExportImages(statblock);
-    const images = Array.from(statblock.querySelectorAll("img"));
-    await Promise.all(
-      images.map((image) => {
-        if (image.complete) return Promise.resolve();
-        return new Promise<void>((resolve) => {
-          image.onload = () => resolve();
-          image.onerror = () => resolve();
-        });
-      }),
-    );
-    const dataUrl = await toPng(statblock, {
-      cacheBust: true,
-      pixelRatio,
-      backgroundColor: exportTheme === "dark" ? "#2d2a24" : "#f6f0df",
-      width: statblock.scrollWidth,
-      height: statblock.scrollHeight,
-      style: {
-        margin: "0",
-        maxWidth: "none",
-        transform: "none",
-      },
-    });
-    root.unmount();
-    mount.remove();
-    return dataUrl;
+    let rootMounted = true;
+    let captureMount: HTMLDivElement | null = null;
+    try {
+      root.render(<StatblockPreview creature={item} theme={exportTheme} />);
+      await document.fonts.ready;
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const renderedStatblock = mount.querySelector(".statblock") as HTMLElement;
+      await inlineExportImages(renderedStatblock);
+      const images = Array.from(renderedStatblock.querySelectorAll("img"));
+      await Promise.all(
+        images.map((image) => {
+          if (image.complete) return Promise.resolve();
+          return new Promise<void>((resolve) => {
+            image.onload = () => resolve();
+            image.onerror = () => resolve();
+          });
+        }),
+      );
+
+      captureMount = document.createElement("div");
+      captureMount.className = "export-render";
+      const statblock = renderedStatblock.cloneNode(true) as HTMLElement;
+      captureMount.appendChild(statblock);
+      document.body.appendChild(captureMount);
+      root.unmount();
+      rootMounted = false;
+      mount.remove();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+
+      const flow = statblock.querySelector(".statblock-flow") as HTMLElement;
+      const flowBounds = flow.getBoundingClientRect();
+      const children = Array.from(flow.children) as HTMLElement[];
+      const secondColumn = children.filter(
+        (child) => child.getBoundingClientRect().left > flowBounds.left + flowBounds.width / 2,
+      );
+      if (secondColumn.length) {
+        const secondColumnSet = new Set(secondColumn);
+        const first = document.createElement("div");
+        const second = document.createElement("div");
+        first.className = "statblock-export-column";
+        second.className = "statblock-export-column";
+        for (const child of children) {
+          (secondColumnSet.has(child) ? second : first).appendChild(child);
+        }
+        flow.classList.add("statblock-flow-export");
+        flow.append(first, second);
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      }
+      return await toPng(statblock, {
+        cacheBust: true,
+        pixelRatio,
+        backgroundColor: exportTheme === "dark" ? "#2d2a24" : "#f6f0df",
+        width: statblock.scrollWidth,
+        height: statblock.scrollHeight,
+        style: {
+          margin: "0",
+          maxWidth: "none",
+          transform: "none",
+        },
+      });
+    } finally {
+      if (rootMounted) root.unmount();
+      mount.remove();
+      captureMount?.remove();
+    }
   };
 
   const exportImage = async () => {
