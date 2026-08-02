@@ -1109,6 +1109,7 @@ export default function StatblockEditor() {
   const [saved, setSaved] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [storageMode, setStorageMode] = useState(STORAGE_MODE.PRIMARY);
+  const [fallbackWarningHidden, setFallbackWarningHidden] = useState(false);
   const [storageRepairing, setStorageRepairing] = useState(false);
   const [storageRepairBlocked, setStorageRepairBlocked] = useState(false);
   const [storageRepairError, setStorageRepairError] = useState("");
@@ -2262,12 +2263,26 @@ export default function StatblockEditor() {
           {notice}
         </div>
       ) : null}
-      {hydrated && storageMode !== STORAGE_MODE.PRIMARY ? (
+      {hydrated && (
+        storageMode === STORAGE_MODE.MEMORY ||
+        (storageMode === STORAGE_MODE.FALLBACK && !fallbackWarningHidden)
+      ) ? (
         <div
           className={`storage-warning ${storageMode === STORAGE_MODE.MEMORY ? "storage-warning-memory" : ""}`}
           role="status"
           aria-live="polite"
         >
+          {storageMode === STORAGE_MODE.FALLBACK ? (
+            <button
+              className="storage-warning-dismiss"
+              type="button"
+              aria-label="Hide fallback storage warning"
+              title="Hide warning until this page is reloaded"
+              onClick={() => setFallbackWarningHidden(true)}
+            >
+              ×
+            </button>
+          ) : null}
           <strong>{storageMode === STORAGE_MODE.FALLBACK ? "Fallback storage active" : "Storage unavailable"}</strong>
           <span>
             {storageMode === STORAGE_MODE.FALLBACK

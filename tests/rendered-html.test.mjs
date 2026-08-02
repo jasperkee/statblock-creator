@@ -32,6 +32,16 @@ test("includes selectable preview column modes", async () => {
   assert.match(source, /2 columns/);
 });
 
+test("includes a session-only fallback storage warning dismissal", async () => {
+  const assets = new URL("../dist/assets/", import.meta.url);
+  const javascript = (await readdir(assets)).filter((name) => name.endsWith(".js"));
+  const source = (await Promise.all(
+    javascript.map((name) => readFile(new URL(name, assets), "utf8")),
+  )).join("\n");
+  assert.match(source, /Hide fallback storage warning/);
+  assert.match(source, /Hide warning until this page is reloaded/);
+});
+
 test("keeps website-link importing out of the default build", async () => {
   const assets = new URL("../dist/assets/", import.meta.url);
   const javascript = (await readdir(assets)).filter((name) => name.endsWith(".js"));
