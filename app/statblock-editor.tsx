@@ -13,7 +13,7 @@ import {
 } from "react";
 import { createRoot } from "react-dom/client";
 import { toPng } from "html-to-image";
-import { openDB } from "idb";
+import { deleteDB, openDB } from "idb";
 import JSZip from "jszip";
 import { parse, stringify } from "yaml";
 import {
@@ -69,14 +69,22 @@ const GROUPS = [
   ["combat", "Combat"],
 ] as const;
 
+// Retain the original persisted identifiers so the product rename does not orphan saved bestiaries.
+const DATABASE_NAME = "statblock-studio";
 let databasePromise: ReturnType<typeof openDB> | null = null;
 function getDatabase() {
   if (!databasePromise) {
-    databasePromise = openDB("statblock-studio", 1, {
+    databasePromise = openDB(DATABASE_NAME, 1, {
       upgrade(database) {
         if (!database.objectStoreNames.contains("creatures")) {
           database.createObjectStore("creatures", { keyPath: "id" });
         }
+      },
+      blocking() {
+        resetDatabaseConnection();
+      },
+      terminated() {
+        databasePromise = null;
       },
     });
     void databasePromise.catch(() => {
@@ -90,6 +98,13 @@ function resetDatabaseConnection() {
   const failedDatabase = databasePromise;
   databasePromise = null;
   void failedDatabase?.then((database) => database.close()).catch(() => undefined);
+}
+
+async function closeDatabaseConnection() {
+  const currentDatabase = databasePromise;
+  databasePromise = null;
+  const database = await currentDatabase?.catch(() => null);
+  database?.close();
 }
 
 async function useDatabase<T>(operation: (database: Awaited<ReturnType<typeof getDatabase>>) => Promise<T>) {
@@ -119,6 +134,14 @@ const indexedDbCreatureStore = {
       transaction.done,
     ]);
   }),
+  reset: async (onBlocked?: () => void) => {
+    await closeDatabaseConnection();
+    await deleteDB(DATABASE_NAME, {
+      blocked() {
+        onBlocked?.();
+      },
+    });
+  },
 };
 
 const fallbackCreatureStore = createLocalStorageCreatureStore({
@@ -1053,6 +1076,9 @@ export default function StatblockEditor() {
   const [saved, setSaved] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [storageMode, setStorageMode] = useState(STORAGE_MODE.PRIMARY);
+  const [storageRepairing, setStorageRepairing] = useState(false);
+  const [storageRepairBlocked, setStorageRepairBlocked] = useState(false);
+  const [storageRepairError, setStorageRepairError] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [bestiaryOpen, setBestiaryOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -1090,6 +1116,31 @@ export default function StatblockEditor() {
   const replaceRecords = (nextRecords: SavedCreature[]) => {
     recordsRef.current = nextRecords;
     setRecords(nextRecords);
+  };
+
+  const resetIndexedDatabase = async () => {
+    const confirmed = window.confirm(
+      `Reset IndexedDB and restore the ${recordsRef.current.length} creature${recordsRef.current.length === 1 ? "" : "s"} currently visible in your bestiary? Any inaccessible records that are not visible here could be lost.`,
+    );
+    if (!confirmed) return;
+    setStorageRepairing(true);
+    setStorageRepairBlocked(false);
+    setStorageRepairError("");
+    const result = await creatureStorage.resetPrimary(
+      recordsRef.current,
+      () => setStorageRepairBlocked(true),
+    );
+    setStorageMode(result.mode);
+    if (result.ok) {
+      setStorageRepairBlocked(false);
+      showNotice("Browser storage repaired");
+    } else {
+      const message = result.error instanceof Error
+        ? result.error.message
+        : "IndexedDB could not be recreated.";
+      setStorageRepairError(message);
+    }
+    setStorageRepairing(false);
   };
 
   const closeImport = useCallback(() => {
@@ -2016,7 +2067,7 @@ export default function StatblockEditor() {
         <div className="drawer-backdrop" role="presentation" onMouseDown={() => setBestiaryOpen(false)}>
           <aside className="bestiary-drawer" aria-label="Local bestiary" onMouseDown={(event) => event.stopPropagation()}>
             <div className="drawer-head">
-              <div><h2>Local bestiary</h2><p>{records.length} creatures saved on this device</p></div>
+              <div><h2>Local bestiary</h2><p>{records.length} creature{records.length === 1 ? "" : "s"} saved on this device</p></div>
               <button className="icon-button" aria-label="Close bestiary" onClick={() => setBestiaryOpen(false)}>×</button>
             </div>
             <input className="search-input" placeholder="Search creatures…" value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -2050,6 +2101,32 @@ export default function StatblockEditor() {
             <button className="button primary batch-button" disabled={exporting} onClick={batchExport}>
               {exporting ? "Building export…" : `Export ${selected.size || records.length} creature${(selected.size || records.length) === 1 ? "" : "s"} as ZIP`}
             </button>
+            <section className="storage-recovery" aria-labelledby="storage-recovery-title">
+              <div>
+                <h3 id="storage-recovery-title">Storage &amp; recovery</h3>
+                <p>
+                  {storageMode === STORAGE_MODE.PRIMARY
+                    ? "Using IndexedDB for local bestiary storage."
+                    : storageMode === STORAGE_MODE.FALLBACK
+                      ? "Using fallback browser storage because IndexedDB is unavailable."
+                      : "Browser storage is unavailable; changes are currently held in memory."}
+                </p>
+              </div>
+              {storageRepairBlocked ? (
+                <p className="storage-recovery-note" role="status">Close other Statblock Creator tabs to continue.</p>
+              ) : null}
+              {storageRepairError ? (
+                <p className="storage-recovery-error" role="alert">{storageRepairError}</p>
+              ) : null}
+              <button
+                className="button danger"
+                type="button"
+                disabled={storageRepairing}
+                onClick={resetIndexedDatabase}
+              >
+                {storageRepairing ? "Repairing…" : "Reset IndexedDB"}
+              </button>
+            </section>
           </aside>
         </div>
       ) : null}
@@ -2071,6 +2148,18 @@ export default function StatblockEditor() {
               ? "Your bestiary is being saved in backup browser storage until IndexedDB recovers."
               : "The editor will keep working, but changes will be lost when this page closes."}
           </span>
+          {storageRepairBlocked ? (
+            <span>Close other Statblock Creator tabs to continue.</span>
+          ) : null}
+          {storageRepairError ? <span role="alert">{storageRepairError}</span> : null}
+          <button
+            className="button small storage-repair-button"
+            type="button"
+            disabled={storageRepairing}
+            onClick={resetIndexedDatabase}
+          >
+            {storageRepairing ? "Repairing…" : "Repair storage"}
+          </button>
         </div>
       ) : null}
     </main>

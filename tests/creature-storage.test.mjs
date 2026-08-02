@@ -35,6 +35,11 @@ function fakeStore(initial = [], failures = {}) {
       if (failures.clear) throw new Error("Storage unavailable");
       records = [];
     },
+    async reset(onBlocked) {
+      if (failures.blocked) onBlocked?.();
+      if (failures.reset) throw new DOMException("Internal error.", "UnknownError");
+      records = [];
+    },
     records: () => structuredClone(records),
   };
 }
@@ -100,4 +105,33 @@ test("keeps records in memory when IndexedDB and fallback storage both fail", as
   const snapshot = [creature("new", 2), ...seed];
   assert.equal(await storage.putMany([snapshot[0]], snapshot), STORAGE_MODE.MEMORY);
   assert.deepEqual(storage.getMemoryRecords(), snapshot);
+});
+
+test("resets IndexedDB and restores the current bestiary before clearing fallback", async () => {
+  const primary = fakeStore([creature("inaccessible", 1)]);
+  const fallback = fakeStore();
+  const storage = createResilientCreatureStorage(primary, fallback);
+  const snapshot = [creature("visible", 3), creature("imported", 2)];
+  await storage.load([creature("seed", 0)]);
+
+  const result = await storage.resetPrimary(snapshot);
+  assert.deepEqual(result, { ok: true, mode: STORAGE_MODE.PRIMARY });
+  assert.deepEqual(primary.records(), snapshot);
+  assert.deepEqual(fallback.records(), []);
+});
+
+test("reports blocked reset attempts and retains fallback data when recreation fails", async () => {
+  const primary = fakeStore([], { blocked: true, reset: true });
+  const fallback = fakeStore();
+  const storage = createResilientCreatureStorage(primary, fallback);
+  const snapshot = [creature("visible", 2)];
+  let blocked = false;
+
+  const result = await storage.resetPrimary(snapshot, () => {
+    blocked = true;
+  });
+  assert.equal(blocked, true);
+  assert.equal(result.ok, false);
+  assert.equal(result.mode, STORAGE_MODE.FALLBACK);
+  assert.deepEqual(fallback.records(), snapshot);
 });

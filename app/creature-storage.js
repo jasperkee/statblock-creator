@@ -132,6 +132,33 @@ export function createResilientCreatureStorage(primary, fallback) {
       });
     },
 
+    resetPrimary(snapshot, onBlocked) {
+      return enqueue(async () => {
+        memoryRecords = snapshot;
+        try {
+          await fallback.replaceAll(snapshot);
+          mode = STORAGE_MODE.FALLBACK;
+        } catch {
+          mode = STORAGE_MODE.MEMORY;
+        }
+
+        try {
+          await primary.reset(onBlocked);
+          await primary.replaceAll(snapshot);
+          try {
+            await fallback.clear();
+          } catch {
+            // The restored IndexedDB remains authoritative if cleanup fails.
+          }
+          mode = STORAGE_MODE.PRIMARY;
+          return { ok: true, mode };
+        } catch (error) {
+          await useFallback(snapshot);
+          return { ok: false, mode, error };
+        }
+      });
+    },
+
     getMode() {
       return mode;
     },
