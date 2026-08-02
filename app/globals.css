@@ -188,6 +188,30 @@ button {
   font-size: 12px;
 }
 
+.storage-warning {
+  position: fixed;
+  z-index: 55;
+  bottom: 24px;
+  left: 24px;
+  display: grid;
+  width: min(430px, calc(100vw - 48px));
+  gap: 2px;
+  padding: 11px 13px;
+  color: #5f4310;
+  background: #fff4d6;
+  border: 1px solid #dfbd6b;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .16);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.storage-warning-memory {
+  color: #72251e;
+  background: #fce8e4;
+  border-color: #df9e93;
+}
+
 @keyframes toast-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
@@ -1080,6 +1104,10 @@ button {
   width: 100%;
   min-height: 190px;
   padding: 11px 12px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid #cbc5ba;
+  border-radius: 8px;
   resize: vertical;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 12px;
@@ -1088,6 +1116,19 @@ button {
 
 .import-url-input {
   width: 100%;
+  height: 40px;
+  padding: 0 11px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid #cbc5ba;
+  border-radius: 8px;
+}
+
+.import-textarea:focus,
+.import-url-input:focus {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  outline-offset: 1px;
 }
 
 .import-actions {
@@ -1239,10 +1280,24 @@ button {
 .site-dark .spell-group input,
 .site-dark .spell-group textarea,
 .site-dark .creature-switcher select,
-.site-dark .search-input {
+.site-dark .search-input,
+.site-dark .import-textarea,
+.site-dark .import-url-input {
   color: var(--ink);
   background: #302e2a;
   border-color: #5b554c;
+}
+
+.site-dark .storage-warning {
+  color: #ffe0a3;
+  background: #49391d;
+  border-color: #79602c;
+}
+
+.site-dark .storage-warning-memory {
+  color: #ffc9bf;
+  background: #4b2925;
+  border-color: #805047;
 }
 
 .site-dark .entry-editor summary,
@@ -1339,6 +1394,13 @@ button {
   .candidate-toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .storage-warning {
+    right: 14px;
+    bottom: 68px;
+    left: 14px;
+    width: auto;
   }
 
   .topbar,

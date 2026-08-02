@@ -17,6 +17,11 @@ import { openDB } from "idb";
 import JSZip from "jszip";
 import { parse, stringify } from "yaml";
 import {
+  createLocalStorageCreatureStore,
+  createResilientCreatureStorage,
+  STORAGE_MODE,
+} from "./creature-storage.js";
+import {
   convert5eToolsMonster,
   convertSelectedCandidates,
   parse5eToolsJson,
@@ -74,9 +79,57 @@ function getDatabase() {
         }
       },
     });
+    void databasePromise.catch(() => {
+      databasePromise = null;
+    });
   }
   return databasePromise;
 }
+
+function resetDatabaseConnection() {
+  const failedDatabase = databasePromise;
+  databasePromise = null;
+  void failedDatabase?.then((database) => database.close()).catch(() => undefined);
+}
+
+async function useDatabase<T>(operation: (database: Awaited<ReturnType<typeof getDatabase>>) => Promise<T>) {
+  try {
+    return await operation(await getDatabase());
+  } catch (error) {
+    resetDatabaseConnection();
+    throw error;
+  }
+}
+
+const indexedDbCreatureStore = {
+  getAll: () => useDatabase((database) => database.getAll("creatures") as Promise<SavedCreature[]>),
+  putMany: (records: SavedCreature[]) => useDatabase(async (database) => {
+    const transaction = database.transaction("creatures", "readwrite");
+    await Promise.all([
+      ...records.map((record) => transaction.store.put(record)),
+      transaction.done,
+    ]);
+  }),
+  delete: (id: string) => useDatabase((database) => database.delete("creatures", id)),
+  replaceAll: (records: SavedCreature[]) => useDatabase(async (database) => {
+    const transaction = database.transaction("creatures", "readwrite");
+    await Promise.all([
+      transaction.store.clear(),
+      ...records.map((record) => transaction.store.put(record)),
+      transaction.done,
+    ]);
+  }),
+};
+
+const fallbackCreatureStore = createLocalStorageCreatureStore({
+  getItem: (key: string) => localStorage.getItem(key),
+  setItem: (key: string, value: string) => localStorage.setItem(key, value),
+  removeItem: (key: string) => localStorage.removeItem(key),
+}, "statblock-studio-bestiary-fallback-v1");
+const creatureStorage = createResilientCreatureStorage(
+  indexedDbCreatureStore,
+  fallbackCreatureStore,
+);
 
 function newId() {
   return globalThis.crypto?.randomUUID?.() ?? `creature-${Date.now()}`;
@@ -999,6 +1052,7 @@ export default function StatblockEditor() {
   const [previewScale, setPreviewScale] = useState(100);
   const [saved, setSaved] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [storageMode, setStorageMode] = useState(STORAGE_MODE.PRIMARY);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [bestiaryOpen, setBestiaryOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -1017,6 +1071,7 @@ export default function StatblockEditor() {
   const [notice, setNotice] = useState("");
   const undoStack = useRef<Creature[]>([]);
   const redoStack = useRef<Creature[]>([]);
+  const recordsRef = useRef<SavedCreature[]>([]);
   const noticeTimer = useRef<number | null>(null);
   const importButton = useRef<HTMLButtonElement>(null);
   const importModal = useRef<HTMLElement>(null);
@@ -1030,6 +1085,11 @@ export default function StatblockEditor() {
     setNotice(message);
     if (noticeTimer.current) window.clearTimeout(noticeTimer.current);
     noticeTimer.current = window.setTimeout(() => setNotice(""), 1800);
+  };
+
+  const replaceRecords = (nextRecords: SavedCreature[]) => {
+    recordsRef.current = nextRecords;
+    setRecords(nextRecords);
   };
 
   const closeImport = useCallback(() => {
@@ -1080,25 +1140,19 @@ export default function StatblockEditor() {
 
   useEffect(() => {
     const timer = window.setTimeout(async () => {
-      const database = await getDatabase();
-      let stored = (await database.getAll("creatures")) as SavedCreature[];
-      if (!stored.length) {
+      let firstCreature = structuredClone(ADULT_RED_DRAGON);
+      try {
         const legacy = localStorage.getItem("statblock-studio-draft");
-        const firstCreature = legacy
-          ? (() => {
-              try {
-                return cleanCreature(JSON.parse(legacy));
-              } catch {
-                return structuredClone(ADULT_RED_DRAGON);
-              }
-            })()
-          : structuredClone(ADULT_RED_DRAGON);
-        const first = { id: newId(), updatedAt: Date.now(), creature: firstCreature };
-        await database.put("creatures", first);
-        stored = [first];
+        if (legacy) firstCreature = cleanCreature(JSON.parse(legacy));
+      } catch {
+        // IndexedDB or in-memory storage can still initialize without legacy data.
       }
+      const first = { id: newId(), updatedAt: Date.now(), creature: firstCreature };
+      const loaded = await creatureStorage.load([first]);
+      const stored = loaded.records as SavedCreature[];
       stored.sort((a, b) => b.updatedAt - a.updatedAt);
-      setRecords(stored);
+      replaceRecords(stored);
+      setStorageMode(loaded.mode);
       setCurrentId(stored[0].id);
       setCreature(stored[0].creature);
       setYamlText(toYaml(stored[0].creature));
@@ -1120,11 +1174,12 @@ export default function StatblockEditor() {
     if (!hydrated || !currentId) return;
     const timer = window.setTimeout(async () => {
       const record = { id: currentId, updatedAt: Date.now(), creature };
-      await (await getDatabase()).put("creatures", record);
-      setRecords((current) => {
-        const next = current.filter((item) => item.id !== currentId);
-        return [record, ...next];
-      });
+      const nextRecords = [
+        record,
+        ...recordsRef.current.filter((item) => item.id !== currentId),
+      ];
+      replaceRecords(nextRecords);
+      setStorageMode(await creatureStorage.putMany([record], nextRecords));
       setSaved(true);
       window.setTimeout(() => setSaved(false), 1200);
     }, 450);
@@ -1165,9 +1220,9 @@ export default function StatblockEditor() {
       updatedAt: now - index,
       creature: structuredClone(item),
     }));
-    const database = await getDatabase();
-    await Promise.all(nextRecords.map((record) => database.put("creatures", record)));
-    setRecords((current) => [...nextRecords, ...current]);
+    const allRecords = [...nextRecords, ...recordsRef.current];
+    replaceRecords(allRecords);
+    setStorageMode(await creatureStorage.putMany(nextRecords, allRecords));
     setCurrentId(nextRecords[0].id);
     setCreature(nextRecords[0].creature);
     setYamlText(toYaml(nextRecords[0].creature));
@@ -1186,9 +1241,9 @@ export default function StatblockEditor() {
     if (records.length === 1) return;
     const record = records.find((item) => item.id === id);
     if (!window.confirm(`Delete ${record?.creature.name ?? "this creature"}?`)) return;
-    await (await getDatabase()).delete("creatures", id);
-    const remaining = records.filter((item) => item.id !== id);
-    setRecords(remaining);
+    const remaining = recordsRef.current.filter((item) => item.id !== id);
+    replaceRecords(remaining);
+    setStorageMode(await creatureStorage.delete(id, remaining));
     setSelected((current) => {
       const next = new Set(current);
       next.delete(id);
@@ -1476,7 +1531,11 @@ export default function StatblockEditor() {
           <div className="brand-mark">S</div>
           <div className="brand-copy">
             <strong>Statblock Studio</strong>
-            <span>{saved ? "Saved locally" : "Autosaves locally"}</span>
+            <span>
+              {storageMode === STORAGE_MODE.MEMORY
+                ? "Changes are not persistent"
+                : saved ? "Saved locally" : "Autosaves locally"}
+            </span>
           </div>
         </div>
         <div className="creature-switcher">
@@ -1998,6 +2057,20 @@ export default function StatblockEditor() {
         <div className="toast" role="status" aria-live="polite">
           <span className="toast-check" aria-hidden="true">✓</span>
           {notice}
+        </div>
+      ) : null}
+      {hydrated && storageMode !== STORAGE_MODE.PRIMARY ? (
+        <div
+          className={`storage-warning ${storageMode === STORAGE_MODE.MEMORY ? "storage-warning-memory" : ""}`}
+          role="status"
+          aria-live="polite"
+        >
+          <strong>{storageMode === STORAGE_MODE.FALLBACK ? "Fallback storage active" : "Storage unavailable"}</strong>
+          <span>
+            {storageMode === STORAGE_MODE.FALLBACK
+              ? "Your bestiary is being saved in backup browser storage until IndexedDB recovers."
+              : "The editor will keep working, but changes will be lost when this page closes."}
+          </span>
         </div>
       ) : null}
     </main>
