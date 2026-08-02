@@ -2,8 +2,10 @@
 
 import {
   ChangeEvent,
+  KeyboardEvent as ReactKeyboardEvent,
   MutableRefObject,
   ReactNode,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -14,6 +16,12 @@ import { toPng } from "html-to-image";
 import { openDB } from "idb";
 import JSZip from "jszip";
 import { parse, stringify } from "yaml";
+import {
+  convert5eToolsMonster,
+  convertSelectedCandidates,
+  parse5eToolsJson,
+  setCandidatesSelected,
+} from "./fivetools-import.js";
 import {
   ABILITIES,
   ABILITY_KEYS,
@@ -32,6 +40,15 @@ import {
   SPELLS,
   SpellcastingConfig,
 } from "./statblock-data";
+
+const ENABLE_5ETOOLS_URL_IMPORT =
+  import.meta.env.VITE_ENABLE_5ETOOLS_URL_IMPORT === "true";
+const loadFiveToolsUrlImporter = ENABLE_5ETOOLS_URL_IMPORT
+  ? () => import("./5etools-url-import")
+  : null;
+
+type ImportTab = "yaml" | "json" | "link";
+type FiveToolsCandidate = ReturnType<typeof parse5eToolsJson>[number];
 
 const TEMP_FIELDS = new Set([
   "creature", "temp", "current_ac", "dirty_ac", "enabled", "hidden", "max",
@@ -225,6 +242,7 @@ function normalizeCreature(raw: Record<string, unknown>): Creature {
     actions,
     bonus_actions: normalizeEntries(raw.bonus_actions),
     reactions: normalizeEntries(raw.reactions),
+    lair_actions: normalizeEntries(raw.lair_actions),
     regional_effects: normalizeEntries(raw.regional_effects),
     legendary_actions: normalizeEntries(raw.legendary_actions),
     spells: Array.isArray(raw.spells) ? raw.spells.map(String) : [],
@@ -402,6 +420,7 @@ function StatblockPreview({
     ["Actions", creature.actions ?? []],
     ["Bonus Actions", creature.bonus_actions ?? []],
     ["Reactions", creature.reactions ?? []],
+    ["Lair Actions", creature.lair_actions ?? []],
     ["Regional Effects", creature.regional_effects ?? []],
     ["Legendary Actions", creature.legendary_actions ?? []],
   ];
@@ -484,7 +503,7 @@ function StatblockPreview({
         </div>
         <div className="statblock-column statblock-column-secondary">
           {sections
-            .filter(([title]) => ["Regional Effects", "Legendary Actions"].includes(title))
+            .filter(([title]) => ["Lair Actions", "Regional Effects", "Legendary Actions"].includes(title))
             .map(([title, entries]) =>
               entries.length || (title === "Legendary Actions" && creature.legendary_description) ? (
                 <div className="statblock-group" key={title}>
@@ -982,6 +1001,16 @@ export default function StatblockEditor() {
   const [hydrated, setHydrated] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [bestiaryOpen, setBestiaryOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importTab, setImportTab] = useState<ImportTab>("yaml");
+  const [yamlImportText, setYamlImportText] = useState("");
+  const [jsonImportText, setJsonImportText] = useState("");
+  const [jsonCandidates, setJsonCandidates] = useState<FiveToolsCandidate[]>([]);
+  const [jsonSelected, setJsonSelected] = useState<Set<string>>(new Set());
+  const [jsonSearch, setJsonSearch] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [importError, setImportError] = useState("");
+  const [importing, setImporting] = useState(false);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState(false);
@@ -989,7 +1018,11 @@ export default function StatblockEditor() {
   const undoStack = useRef<Creature[]>([]);
   const redoStack = useRef<Creature[]>([]);
   const noticeTimer = useRef<number | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
+  const importButton = useRef<HTMLButtonElement>(null);
+  const importModal = useRef<HTMLElement>(null);
+  const yamlFileInput = useRef<HTMLInputElement>(null);
+  const jsonFileInput = useRef<HTMLInputElement>(null);
+  const urlAbortController = useRef<AbortController | null>(null);
   const imageInput = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLElement>(null);
 
@@ -998,6 +1031,52 @@ export default function StatblockEditor() {
     if (noticeTimer.current) window.clearTimeout(noticeTimer.current);
     noticeTimer.current = window.setTimeout(() => setNotice(""), 1800);
   };
+
+  const closeImport = useCallback(() => {
+    urlAbortController.current?.abort();
+    urlAbortController.current = null;
+    setImportOpen(false);
+    setImporting(false);
+    window.setTimeout(() => importButton.current?.focus(), 0);
+  }, []);
+
+  const openImport = () => {
+    setImportTab("yaml");
+    setYamlImportText("");
+    setJsonImportText("");
+    setJsonCandidates([]);
+    setJsonSelected(new Set());
+    setJsonSearch("");
+    setWebsiteUrl("");
+    setImportError("");
+    setImportOpen(true);
+  };
+
+  useEffect(() => {
+    if (!importOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeImport();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(importModal.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex="0"]',
+      ) ?? []).filter((element) => !element.hasAttribute("hidden"));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeImport, importOpen]);
 
   useEffect(() => {
     const timer = window.setTimeout(async () => {
@@ -1078,17 +1157,28 @@ export default function StatblockEditor() {
     redoStack.current = [];
   };
 
-  const createCreature = async (base = BLANK_CREATURE) => {
-    const record = {
+  const createCreatures = async (creatures: Creature[]) => {
+    if (!creatures.length) return [];
+    const now = Date.now();
+    const nextRecords = creatures.map((item, index) => ({
       id: newId(),
-      updatedAt: Date.now(),
-      creature: structuredClone(base),
-    };
-    await (await getDatabase()).put("creatures", record);
-    setRecords((current) => [record, ...current]);
-    setCurrentId(record.id);
-    setCreature(record.creature);
-    setYamlText(toYaml(record.creature));
+      updatedAt: now - index,
+      creature: structuredClone(item),
+    }));
+    const database = await getDatabase();
+    await Promise.all(nextRecords.map((record) => database.put("creatures", record)));
+    setRecords((current) => [...nextRecords, ...current]);
+    setCurrentId(nextRecords[0].id);
+    setCreature(nextRecords[0].creature);
+    setYamlText(toYaml(nextRecords[0].creature));
+    setYamlError("");
+    undoStack.current = [];
+    redoStack.current = [];
+    return nextRecords;
+  };
+
+  const createCreature = async (base = BLANK_CREATURE) => {
+    await createCreatures([base]);
     setBestiaryOpen(false);
   };
 
@@ -1118,17 +1208,93 @@ export default function StatblockEditor() {
     }
   };
 
-  const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
+  const handleImportFile = async (
+    event: ChangeEvent<HTMLInputElement>,
+    kind: "yaml" | "json",
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      const next = cleanCreature(parse(stripFence(await file.text())));
-      await createCreature(next);
+      const source = await file.text();
+      if (kind === "yaml") setYamlImportText(source);
+      else {
+        setJsonImportText(source);
+        setJsonCandidates([]);
+        setJsonSelected(new Set());
+      }
+      setImportError("");
     } catch (error) {
-      setYamlError(error instanceof Error ? error.message : "Could not import file");
-      setEditor("yaml");
+      setImportError(error instanceof Error ? error.message : "Could not read the file.");
     }
     event.target.value = "";
+  };
+
+  const importYaml = async () => {
+    try {
+      const next = cleanCreature(parse(stripFence(yamlImportText)));
+      await createCreatures([next]);
+      closeImport();
+      showNotice("Creature imported");
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "Could not import YAML.");
+    }
+  };
+
+  const prepareJsonImport = () => {
+    try {
+      const candidates = parse5eToolsJson(jsonImportText);
+      setJsonCandidates(candidates);
+      setJsonSelected(candidates.length === 1 ? new Set([candidates[0].id]) : new Set());
+      setJsonSearch("");
+      setImportError("");
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "Could not parse JSON.");
+    }
+  };
+
+  const importSelectedJson = async () => {
+    try {
+      const creatures = convertSelectedCandidates(
+        jsonCandidates,
+        jsonSelected,
+      ) as Creature[];
+      if (!creatures.length) throw new Error("Select at least one monster to import.");
+      await createCreatures(creatures);
+      closeImport();
+      showNotice(`Imported ${creatures.length} creature${creatures.length === 1 ? "" : "s"}`);
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "Could not import JSON.");
+    }
+  };
+
+  const importWebsiteLink = async () => {
+    if (!loadFiveToolsUrlImporter) return;
+    const controller = new AbortController();
+    urlAbortController.current?.abort();
+    urlAbortController.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 20_000);
+    setImporting(true);
+    setImportError("");
+    try {
+      const { fetchFiveToolsMonsterUrl } = await loadFiveToolsUrlImporter();
+      const result = await fetchFiveToolsMonsterUrl(websiteUrl, controller.signal);
+      const imported = convert5eToolsMonster(result.monster, {
+        legendaryGroup: result.legendaryGroup,
+      }) as Creature;
+      await createCreatures([imported]);
+      closeImport();
+      showNotice("Creature imported");
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setImportError(error instanceof Error ? error.message : "Could not import this website link.");
+      } else if (importOpen) {
+        setImportError("The external data request timed out.");
+      }
+    } finally {
+      window.clearTimeout(timeout);
+      if (urlAbortController.current === controller) urlAbortController.current = null;
+      setImporting(false);
+    }
   };
 
   const handleImage = (event: ChangeEvent<HTMLInputElement>) => {
@@ -1271,6 +1437,37 @@ export default function StatblockEditor() {
       .sort((a, b) => a.creature.name.localeCompare(b.creature.name)),
     [records, search],
   );
+  const filteredJsonCandidates = useMemo(() => {
+    const query = jsonSearch.trim().toLowerCase();
+    if (!query) return jsonCandidates;
+    return jsonCandidates.filter((candidate) =>
+      `${candidate.name} ${candidate.source} ${candidate.cr}`.toLowerCase().includes(query),
+    );
+  }, [jsonCandidates, jsonSearch]);
+  const importTabs: { id: ImportTab; label: string }[] = [
+    { id: "yaml", label: "YAML" },
+    { id: "json", label: "5etools JSON" },
+    ...(ENABLE_5ETOOLS_URL_IMPORT
+      ? [{ id: "link" as const, label: "5etools Link" }]
+      : []),
+  ];
+
+  const changeImportTab = (tab: ImportTab) => {
+    setImportTab(tab);
+    setImportError("");
+  };
+
+  const handleTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const current = importTabs.findIndex((tab) => tab.id === importTab);
+    const direction = event.key === "ArrowRight" ? 1 : -1;
+    const next = importTabs[(current + direction + importTabs.length) % importTabs.length];
+    changeImportTab(next.id);
+    window.setTimeout(() => {
+      document.getElementById(`import-tab-${next.id}`)?.focus();
+    }, 0);
+  };
 
   return (
     <main className={`app-shell ${siteTheme === "dark" ? "site-dark" : ""}`}>
@@ -1297,7 +1494,6 @@ export default function StatblockEditor() {
           <button className="button" type="button" onClick={() => setBestiaryOpen(true)}>Bestiary</button>
         </div>
         <div className="toolbar">
-          <input ref={fileInput} className="hidden-input" type="file" accept=".md,.txt,.yaml,.yml" onChange={handleImport} />
           <input ref={imageInput} className="hidden-input" type="file" accept="image/*" onChange={handleImage} />
           <a
             className="icon-button source-link toolbar-separator"
@@ -1314,7 +1510,7 @@ export default function StatblockEditor() {
               />
             </svg>
           </a>
-          <button className="button" onClick={() => fileInput.current?.click()}>Import</button>
+          <button ref={importButton} className="button" type="button" onClick={openImport}>Import</button>
           <button
             className="button"
             type="button"
@@ -1516,6 +1712,7 @@ export default function StatblockEditor() {
                 <RepeatableEditor title="Actions" value={creature.actions ?? []} onChange={(value) => update("actions", value)} />
                 <RepeatableEditor title="Bonus Actions" value={creature.bonus_actions ?? []} onChange={(value) => update("bonus_actions", value)} />
                 <RepeatableEditor title="Reactions" value={creature.reactions ?? []} onChange={(value) => update("reactions", value)} />
+                <RepeatableEditor title="Lair Actions" value={creature.lair_actions ?? []} onChange={(value) => update("lair_actions", value)} />
                 <RepeatableEditor title="Regional Effects" value={creature.regional_effects ?? []} onChange={(value) => update("regional_effects", value)} />
                 <div className="field">
                   <label htmlFor="legendary-description">Legendary action introduction</label>
@@ -1549,6 +1746,212 @@ export default function StatblockEditor() {
           </div>
         </section>
       </div>
+
+      {importOpen ? (
+        <div className="import-backdrop" role="presentation" onMouseDown={closeImport}>
+          <section
+            ref={importModal}
+            className="import-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="import-dialog-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="import-head">
+              <div>
+                <h2 id="import-dialog-title">Import creature</h2>
+                <p>Choose a format, then upload a file or paste its contents.</p>
+              </div>
+              <button className="icon-button" type="button" aria-label="Close import" onClick={closeImport}>×</button>
+            </div>
+            <div className="import-tabs" role="tablist" aria-label="Import format">
+              {importTabs.map((tab, index) => (
+                <button
+                  key={tab.id}
+                  id={`import-tab-${tab.id}`}
+                  className={`import-tab ${importTab === tab.id ? "active" : ""}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={importTab === tab.id}
+                  aria-controls={`import-panel-${tab.id}`}
+                  tabIndex={importTab === tab.id ? 0 : -1}
+                  disabled={importing}
+                  autoFocus={index === 0}
+                  onKeyDown={handleTabKeyDown}
+                  onClick={() => changeImportTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div
+              id={`import-panel-${importTab}`}
+              className="import-body"
+              role="tabpanel"
+              aria-labelledby={`import-tab-${importTab}`}
+            >
+              {importTab === "yaml" ? (
+                <>
+                  <div className="import-copy">
+                    <h3>Fantasy Statblocks YAML</h3>
+                    <p>Upload or paste one Obsidian Fantasy Statblocks-compatible YAML object or fenced <code>statblock</code> block.</p>
+                  </div>
+                  <input
+                    ref={yamlFileInput}
+                    className="hidden-input"
+                    type="file"
+                    accept=".md,.txt,.yaml,.yml,text/plain,application/yaml"
+                    onChange={(event) => handleImportFile(event, "yaml")}
+                  />
+                  <div className="import-source-row">
+                    <button className="button small" type="button" onClick={() => yamlFileInput.current?.click()}>Choose YAML file</button>
+                    <span>or paste and edit below</span>
+                  </div>
+                  <textarea
+                    className="import-textarea"
+                    aria-label="YAML to import"
+                    placeholder={'```statblock\nname: Example Creature\n...\n```'}
+                    spellCheck={false}
+                    value={yamlImportText}
+                    onChange={(event) => {
+                      setYamlImportText(event.target.value);
+                      setImportError("");
+                    }}
+                  />
+                  <div className="import-disclaimer">
+                    Only import content you own or are licensed or otherwise permitted to use.
+                  </div>
+                </>
+              ) : null}
+
+              {importTab === "json" ? (
+                <>
+                  <div className="import-copy">
+                    <h3>5etools-compatible JSON</h3>
+                    <p>Upload or paste monster JSON that you created or are authorized to use. Statblock Studio converts the data locally and does not provide third-party game content.</p>
+                  </div>
+                  <div className="import-disclaimer">
+                    <strong>Disclaimer</strong>
+                    Only import content you own or are licensed or otherwise permitted to use. Statblock Studio is not affiliated with or endorsed by Wizards of the Coast or 5etools.
+                  </div>
+                  {!jsonCandidates.length ? (
+                    <>
+                      <input
+                        ref={jsonFileInput}
+                        className="hidden-input"
+                        type="file"
+                        accept=".json,application/json,text/json"
+                        onChange={(event) => handleImportFile(event, "json")}
+                      />
+                      <div className="import-source-row">
+                        <button className="button small" type="button" onClick={() => jsonFileInput.current?.click()}>Choose JSON file</button>
+                        <span>or paste and edit below</span>
+                      </div>
+                      <textarea
+                        className="import-textarea"
+                        aria-label="5etools-compatible JSON to import"
+                        placeholder={'{\n  "monster": [\n    ...\n  ]\n}'}
+                        spellCheck={false}
+                        value={jsonImportText}
+                        onChange={(event) => {
+                          setJsonImportText(event.target.value);
+                          setImportError("");
+                        }}
+                      />
+                    </>
+                  ) : (
+                    <div className="candidate-panel">
+                      <div className="candidate-toolbar">
+                        <input
+                          className="search-input"
+                          type="search"
+                          aria-label="Search imported monsters"
+                          placeholder="Search monsters…"
+                          value={jsonSearch}
+                          onChange={(event) => setJsonSearch(event.target.value)}
+                        />
+                        <span className="candidate-count">{jsonSelected.size} of {jsonCandidates.length} selected</span>
+                      </div>
+                      <div className="candidate-actions">
+                        <button className="button small" type="button" onClick={() => setJsonSelected((current) => setCandidatesSelected(current, jsonCandidates, true))}>Select all</button>
+                        <button className="button small ghost" type="button" onClick={() => setJsonSelected((current) => setCandidatesSelected(current, jsonCandidates, false))}>Deselect all</button>
+                        <button className="button small ghost" type="button" onClick={() => {
+                          setJsonCandidates([]);
+                          setJsonSelected(new Set());
+                          setImportError("");
+                        }}>Edit JSON</button>
+                      </div>
+                      <div className="candidate-list" aria-label="Monsters available to import">
+                        {filteredJsonCandidates.length ? filteredJsonCandidates.map((candidate) => (
+                          <label className="candidate-row" key={candidate.id}>
+                            <input
+                              type="checkbox"
+                              checked={jsonSelected.has(candidate.id)}
+                              onChange={(event) => {
+                                const checked = event.target.checked;
+                                setJsonSelected((current) => {
+                                  const next = new Set(current);
+                                  if (checked) next.add(candidate.id);
+                                  else next.delete(candidate.id);
+                                  return next;
+                                });
+                              }}
+                            />
+                            <span>{candidate.name}</span>
+                            <small>{candidate.source || "Unknown source"} · CR {candidate.cr || "—"}</small>
+                          </label>
+                        )) : <div className="empty-state">No monsters match this search.</div>}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : null}
+
+              {importTab === "link" && ENABLE_5ETOOLS_URL_IMPORT ? (
+                <>
+                  <div className="import-copy">
+                    <h3>5etools website link</h3>
+                    <p>Paste a standard 5e.tools bestiary link. This self-hosted feature contacts the external 5etools GitHub mirror from your browser.</p>
+                  </div>
+                  <input
+                    className="import-url-input"
+                    type="url"
+                    aria-label="5etools bestiary URL"
+                    placeholder="https://5e.tools/bestiary.html#adult%20red%20dragon_xmm"
+                    value={websiteUrl}
+                    onChange={(event) => {
+                      setWebsiteUrl(event.target.value);
+                      setImportError("");
+                    }}
+                  />
+                  <div className="import-disclaimer">
+                    <strong>Disclaimer</strong>
+                    Only import content you own or are licensed or otherwise permitted to use. Statblock Studio is not affiliated with or endorsed by Wizards of the Coast or 5etools.
+                  </div>
+                  {importing ? <div className="import-loading" role="status">Fetching and converting monster data…</div> : null}
+                </>
+              ) : null}
+
+              {importError ? <div className="error-banner" role="alert">{importError}</div> : null}
+              <div className="import-actions">
+                <button className="button ghost" type="button" onClick={closeImport}>Cancel</button>
+                {importTab === "yaml" ? (
+                  <button className="button primary" type="button" disabled={!yamlImportText.trim()} onClick={importYaml}>Import YAML</button>
+                ) : null}
+                {importTab === "json" && !jsonCandidates.length ? (
+                  <button className="button primary" type="button" disabled={!jsonImportText.trim()} onClick={prepareJsonImport}>Review monsters</button>
+                ) : null}
+                {importTab === "json" && jsonCandidates.length ? (
+                  <button className="button primary" type="button" disabled={!jsonSelected.size} onClick={importSelectedJson}>Import {jsonSelected.size || "selected"}</button>
+                ) : null}
+                {importTab === "link" && ENABLE_5ETOOLS_URL_IMPORT ? (
+                  <button className="button primary" type="button" disabled={importing || !websiteUrl.trim()} onClick={importWebsiteLink}>{importing ? "Importing…" : "Import from link"}</button>
+                ) : null}
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {bestiaryOpen ? (
         <div className="drawer-backdrop" role="presentation" onMouseDown={() => setBestiaryOpen(false)}>

@@ -979,6 +979,204 @@ button {
   inset: 0;
   background: rgba(0, 0, 0, .45);
 }
+
+.import-backdrop {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, .5);
+}
+
+.import-modal {
+  display: flex;
+  width: min(760px, 100%);
+  max-height: min(90vh, 820px);
+  overflow: hidden;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .32);
+  flex-direction: column;
+}
+
+.import-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px 14px;
+}
+
+.import-head h2,
+.import-copy h3 {
+  margin: 0;
+}
+
+.import-head p,
+.import-copy p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.import-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 22px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+}
+
+.import-tab {
+  padding: 10px 13px 9px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.import-tab.active {
+  color: var(--accent-deep);
+  border-bottom-color: var(--accent-deep);
+}
+
+.import-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.import-body {
+  display: grid;
+  gap: 16px;
+  padding: 20px 22px;
+  overflow-y: auto;
+}
+
+.import-source-row,
+.import-actions,
+.candidate-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.import-source-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.import-textarea {
+  width: 100%;
+  min-height: 190px;
+  padding: 11px 12px;
+  resize: vertical;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.import-url-input {
+  width: 100%;
+}
+
+.import-actions {
+  justify-content: flex-end;
+}
+
+.import-disclaimer {
+  padding: 12px 13px;
+  color: var(--muted);
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.import-disclaimer strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--ink);
+}
+
+.candidate-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.candidate-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.candidate-toolbar .search-input {
+  min-width: min(280px, 100%);
+  flex: 1;
+}
+
+.candidate-count {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.candidate-list {
+  display: grid;
+  max-height: 270px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.candidate-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 11px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.candidate-row + .candidate-row {
+  border-top: 1px solid var(--line);
+}
+
+.candidate-row:hover {
+  background: var(--surface-soft);
+}
+
+.candidate-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.candidate-row small {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.import-loading {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .bestiary-drawer {
   position: absolute;
   top: 0;
@@ -1116,6 +1314,33 @@ button {
 }
 
 @media (max-width: 560px) {
+  .import-backdrop {
+    padding: 0;
+  }
+
+  .import-modal {
+    width: 100%;
+    max-height: 100vh;
+    min-height: 100vh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .import-head,
+  .import-body {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .import-tabs {
+    padding: 0 16px;
+  }
+
+  .candidate-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .topbar,
   .workspace-controls,
   .editor-pane,

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import test from "node:test";
 
 async function exists(path) {
@@ -19,4 +19,14 @@ test("builds Statblock Studio as a static SPA", async () => {
   assert.equal(await exists(new URL("../dist/server/index.js", import.meta.url)), false);
   assert.doesNotMatch(html, /codex-preview/);
   assert.doesNotMatch(html, /react-loading-skeleton/);
+});
+
+test("keeps website-link importing out of the default build", async () => {
+  const assets = new URL("../dist/assets/", import.meta.url);
+  const javascript = (await readdir(assets)).filter((name) => name.endsWith(".js"));
+  const source = (await Promise.all(
+    javascript.map((name) => readFile(new URL(name, assets), "utf8")),
+  )).join("\n");
+  assert.doesNotMatch(source, /5etools Link/);
+  assert.doesNotMatch(source, /main\/data\/bestiary/);
 });

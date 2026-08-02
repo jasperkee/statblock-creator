@@ -23,6 +23,7 @@ Live site: https://statblock-creator.pages.dev/
 - IndexedDB autosave and undo/redo
 - Fenced `statblock` YAML copy and PNG export
 - Cleanup of Initiative Tracker fields when importing
+- Tabbed YAML and 5etools-compatible JSON imports
 
 ## Development
 
@@ -47,6 +48,19 @@ The production build is a static SPA:
 ```bash
 npm run build
 ```
+
+### Optional 5etools website-link import
+
+Website-link importing is disabled by default. Self-hosted builds can enable the
+5etools link tab at build time:
+
+```bash
+VITE_ENABLE_5ETOOLS_URL_IMPORT=true npm run build
+```
+
+Local YAML and 5etools-compatible JSON imports remain available when this flag
+is disabled. The link importer only accepts standard 5e.tools bestiary links and
+contacts the external 5etools GitHub mirror from the browser.
 
 Deploy the generated `dist/` folder to any static host, including Cloudflare
 Pages, GitHub Pages, Netlify, or Vercel static hosting.

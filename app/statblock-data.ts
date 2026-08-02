@@ -35,6 +35,7 @@ export type Creature = {
   actions?: Entry[];
   bonus_actions?: Entry[];
   reactions?: Entry[];
+  lair_actions?: Entry[];
   regional_effects?: Entry[];
   legendary_description?: string;
   legendary_actions?: Entry[];
@@ -294,6 +295,7 @@ export const BLANK_CREATURE: Creature = {
   actions: [],
   bonus_actions: [],
   reactions: [],
+  lair_actions: [],
   regional_effects: [],
   legendary_actions: [],
 };

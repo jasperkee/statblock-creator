@@ -9,7 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "start": "vite preview",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "test": "npm run build && node --test tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist"
   },
   "dependencies": {
