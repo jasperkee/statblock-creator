@@ -203,7 +203,7 @@ export function parse5eToolsJson(source) {
   });
 }
 
-/** Convert one complete (non-_copy) 5etools monster into Statblock Studio's Creature shape. */
+/** Convert one complete (non-_copy) 5etools monster into Statblock Creator's Creature shape. */
 export function convert5eToolsMonster(raw, options = {}) {
   const monster = object(raw);
   if (monster._copy) throw new Error(`Cannot import ${text(monster.name) || "this monster"}: 5etools _copy entries require their source data.`);

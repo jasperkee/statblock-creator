@@ -1531,13 +1531,13 @@ export default function StatblockEditor() {
       }
       zip.file("bestiary.md", combined.join("\n\n---\n\n"));
       zip.file(
-        "statblock-studio-backup.json",
+        "statblock-creator-backup.json",
         JSON.stringify(chosen.map((record) => ({
           ...record,
           creature: exportableCreature(record.creature, true),
         })), null, 2),
       );
-      download(await zip.generateAsync({ type: "blob" }), "statblock-studio-bestiary.zip");
+      download(await zip.generateAsync({ type: "blob" }), "statblock-creator-bestiary.zip");
     } finally {
       setExporting(false);
     }
@@ -1603,7 +1603,7 @@ export default function StatblockEditor() {
         <div className="brand">
           <div className="brand-mark">S</div>
           <div className="brand-copy">
-            <strong>Statblock Studio</strong>
+            <strong>Statblock Creator</strong>
             <span>
               {storageMode === STORAGE_MODE.MEMORY
                 ? "Changes are not persistent"
@@ -1960,11 +1960,11 @@ export default function StatblockEditor() {
                 <>
                   <div className="import-copy">
                     <h3>5etools-compatible JSON</h3>
-                    <p>Upload or paste monster JSON that you created or are authorized to use. Statblock Studio converts the data locally and does not provide third-party game content.</p>
+                    <p>Upload or paste monster JSON that you created or are authorized to use. Statblock Creator converts the data locally and does not provide third-party game content.</p>
                   </div>
                   <div className="import-disclaimer">
                     <strong>Disclaimer</strong>
-                    Only import content you own or are licensed or otherwise permitted to use. Statblock Studio is not affiliated with or endorsed by Wizards of the Coast or 5etools.
+                    Only import content you own or are licensed or otherwise permitted to use. Statblock Creator is not affiliated with or endorsed by Wizards of the Coast or 5etools.
                   </div>
                   {!jsonCandidates.length ? (
                     <>
@@ -2058,7 +2058,7 @@ export default function StatblockEditor() {
                   />
                   <div className="import-disclaimer">
                     <strong>Disclaimer</strong>
-                    Only import content you own or are licensed or otherwise permitted to use. Statblock Studio is not affiliated with or endorsed by Wizards of the Coast or 5etools.
+                    Only import content you own or are licensed or otherwise permitted to use. Statblock Creator is not affiliated with or endorsed by Wizards of the Coast or 5etools.
                   </div>
                   {importing ? <div className="import-loading" role="status">Fetching and converting monster data…</div> : null}
                 </>

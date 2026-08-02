@@ -12,9 +12,9 @@ async function exists(path) {
   }
 }
 
-test("builds Statblock Studio as a static SPA", async () => {
+test("builds Statblock Creator as a static SPA", async () => {
   const html = await readFile(new URL("../dist/index.html", import.meta.url), "utf8");
-  assert.match(html, /<title>Statblock Studio<\/title>/i);
+  assert.match(html, /<title>Statblock Creator<\/title>/i);
   assert.match(html, /\/assets\/index-[^"]+\.js/);
   assert.equal(await exists(new URL("../dist/server/index.js", import.meta.url)), false);
   assert.doesNotMatch(html, /codex-preview/);
