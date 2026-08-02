@@ -8,6 +8,8 @@ export type SpellcastingConfig = {
   notes: string;
 };
 
+export type StatblockColumnMode = "auto" | "single" | "double";
+
 export type Creature = {
   layout?: string;
   image?: string;
@@ -47,6 +49,7 @@ export type Creature = {
 export type SavedCreature = {
   id: string;
   updatedAt: number;
+  columnMode?: StatblockColumnMode;
   creature: Creature;
 };
 

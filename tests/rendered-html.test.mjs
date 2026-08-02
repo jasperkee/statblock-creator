@@ -21,6 +21,17 @@ test("builds Statblock Creator as a static SPA", async () => {
   assert.doesNotMatch(html, /react-loading-skeleton/);
 });
 
+test("includes selectable preview column modes", async () => {
+  const assets = new URL("../dist/assets/", import.meta.url);
+  const javascript = (await readdir(assets)).filter((name) => name.endsWith(".js"));
+  const source = (await Promise.all(
+    javascript.map((name) => readFile(new URL(name, assets), "utf8")),
+  )).join("\n");
+  assert.match(source, /Preview columns/);
+  assert.match(source, /1 column/);
+  assert.match(source, /2 columns/);
+});
+
 test("keeps website-link importing out of the default build", async () => {
   const assets = new URL("../dist/assets/", import.meta.url);
   const javascript = (await readdir(assets)).filter((name) => name.endsWith(".js"));

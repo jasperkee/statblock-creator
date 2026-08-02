@@ -8,6 +8,7 @@ import {
   ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -17,6 +18,13 @@ import { toPng } from "html-to-image";
 import { deleteDB, openDB } from "idb";
 import JSZip from "jszip";
 import { parse, stringify } from "yaml";
+import {
+  COLUMN_MODE,
+  createSavedCreatureRecords,
+  normalizeColumnMode,
+  normalizeSavedCreatureRecord,
+  resolveColumnLayout,
+} from "./statblock-layout.js";
 import {
   createLocalStorageCreatureStore,
   createResilientCreatureStorage,
@@ -45,6 +53,7 @@ import {
   SKILLS,
   SPELLS,
   SpellcastingConfig,
+  StatblockColumnMode,
 } from "./statblock-data";
 
 const ENABLE_5ETOOLS_URL_IMPORT =
@@ -484,12 +493,18 @@ function EntryPreview({ entry }: { entry: Entry }) {
 function StatblockPreview({
   creature,
   theme,
+  columnMode,
   elementRef,
 }: {
   creature: Creature;
   theme: "parchment" | "dark";
+  columnMode: StatblockColumnMode;
   elementRef?: MutableRefObject<HTMLElement | null>;
 }) {
+  const previewRef = useRef<HTMLElement | null>(null);
+  const [resolvedColumnMode, setResolvedColumnMode] = useState<"single" | "double">(
+    columnMode === COLUMN_MODE.DOUBLE ? COLUMN_MODE.DOUBLE : COLUMN_MODE.SINGLE,
+  );
   const subtitle = `${creature.size} ${creature.type}${
     creature.subtype ? ` (${creature.subtype})` : ""
   }, ${creature.alignment}`;
@@ -501,10 +516,40 @@ function StatblockPreview({
     ["Lair Actions", creature.lair_actions ?? []],
     ["Regional Effects", creature.regional_effects ?? []],
   ];
+
+  useLayoutEffect(() => {
+    const preview = previewRef.current;
+    if (!preview) return;
+    if (columnMode !== COLUMN_MODE.AUTO) {
+      setResolvedColumnMode(columnMode);
+      return;
+    }
+
+    let cancelled = false;
+    const measure = () => {
+      if (cancelled || !previewRef.current) return;
+      preview.classList.add("statblock-measure-single");
+      const singleColumnHeight = preview.scrollHeight;
+      preview.classList.remove("statblock-measure-single");
+      setResolvedColumnMode(resolveColumnLayout(columnMode, singleColumnHeight));
+    };
+
+    measure();
+    void document.fonts.ready.then(() => requestAnimationFrame(measure));
+    return () => {
+      cancelled = true;
+      preview.classList.remove("statblock-measure-single");
+    };
+  }, [columnMode, creature, theme]);
+
   return (
     <article
-      className={`statblock ${theme === "dark" ? "dark" : ""}`}
-      ref={elementRef}
+      className={`statblock statblock-layout-${resolvedColumnMode} ${theme === "dark" ? "dark" : ""}`}
+      data-column-layout={resolvedColumnMode}
+      ref={(node) => {
+        previewRef.current = node;
+        if (elementRef) elementRef.current = node;
+      }}
     >
       <div className="statblock-flow">
         <div className="statblock-summary">
@@ -1060,6 +1105,7 @@ export default function StatblockEditor() {
   const [theme, setTheme] = useState<"parchment" | "dark">("parchment");
   const [siteTheme, setSiteTheme] = useState<"light" | "dark">("light");
   const [previewScale, setPreviewScale] = useState(100);
+  const [columnMode, setColumnMode] = useState<StatblockColumnMode>(COLUMN_MODE.AUTO);
   const [saved, setSaved] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [storageMode, setStorageMode] = useState(STORAGE_MODE.PRIMARY);
@@ -1187,12 +1233,13 @@ export default function StatblockEditor() {
       }
       const first = { id: newId(), updatedAt: Date.now(), creature: firstCreature };
       const loaded = await creatureStorage.load([first]);
-      const stored = loaded.records as SavedCreature[];
+      const stored = (loaded.records as SavedCreature[]).map(normalizeSavedCreatureRecord);
       stored.sort((a, b) => b.updatedAt - a.updatedAt);
       replaceRecords(stored);
       setStorageMode(loaded.mode);
       setCurrentId(stored[0].id);
       setCreature(stored[0].creature);
+      setColumnMode(stored[0].columnMode ?? COLUMN_MODE.AUTO);
       setYamlText(toYaml(stored[0].creature));
       const savedCollapsed = localStorage.getItem("statblock-studio-collapsed");
       if (savedCollapsed) setCollapsed(JSON.parse(savedCollapsed));
@@ -1211,7 +1258,13 @@ export default function StatblockEditor() {
   useEffect(() => {
     if (!hydrated || !currentId) return;
     const timer = window.setTimeout(async () => {
-      const record = { id: currentId, updatedAt: Date.now(), creature };
+      const currentRecord = recordsRef.current.find((item) => item.id === currentId);
+      const record: SavedCreature = {
+        id: currentId,
+        updatedAt: Date.now(),
+        columnMode: normalizeColumnMode(currentRecord?.columnMode),
+        creature,
+      };
       const nextRecords = [
         record,
         ...recordsRef.current.filter((item) => item.id !== currentId),
@@ -1244,25 +1297,30 @@ export default function StatblockEditor() {
     if (!record) return;
     setCurrentId(id);
     setCreature(record.creature);
+    setColumnMode(normalizeColumnMode(record.columnMode));
     setYamlText(toYaml(record.creature));
     setYamlError("");
     undoStack.current = [];
     redoStack.current = [];
   };
 
-  const createCreatures = async (creatures: Creature[]) => {
+  const createCreatures = async (
+    creatures: Creature[],
+    nextColumnMode: StatblockColumnMode = COLUMN_MODE.AUTO,
+  ) => {
     if (!creatures.length) return [];
     const now = Date.now();
-    const nextRecords = creatures.map((item, index) => ({
-      id: newId(),
-      updatedAt: now - index,
-      creature: structuredClone(item),
-    }));
+    const nextRecords = createSavedCreatureRecords(creatures, {
+      idFor: () => newId(),
+      now,
+      columnMode: nextColumnMode,
+    }) as SavedCreature[];
     const allRecords = [...nextRecords, ...recordsRef.current];
     replaceRecords(allRecords);
     setStorageMode(await creatureStorage.putMany(nextRecords, allRecords));
     setCurrentId(nextRecords[0].id);
     setCreature(nextRecords[0].creature);
+    setColumnMode(nextRecords[0].columnMode ?? COLUMN_MODE.AUTO);
     setYamlText(toYaml(nextRecords[0].creature));
     setYamlError("");
     undoStack.current = [];
@@ -1270,9 +1328,30 @@ export default function StatblockEditor() {
     return nextRecords;
   };
 
-  const createCreature = async (base = BLANK_CREATURE) => {
-    await createCreatures([base]);
+  const createCreature = async (
+    base = BLANK_CREATURE,
+    nextColumnMode: StatblockColumnMode = COLUMN_MODE.AUTO,
+  ) => {
+    await createCreatures([base], nextColumnMode);
     setBestiaryOpen(false);
+  };
+
+  const updateColumnMode = async (nextMode: StatblockColumnMode) => {
+    const normalizedMode = normalizeColumnMode(nextMode) as StatblockColumnMode;
+    setColumnMode(normalizedMode);
+    const currentRecord = recordsRef.current.find((item) => item.id === currentId);
+    if (!currentRecord) return;
+    const updatedRecord: SavedCreature = {
+      ...currentRecord,
+      updatedAt: Date.now(),
+      columnMode: normalizedMode,
+    };
+    const nextRecords = [
+      updatedRecord,
+      ...recordsRef.current.filter((item) => item.id !== currentId),
+    ];
+    replaceRecords(nextRecords);
+    setStorageMode(await creatureStorage.putMany([updatedRecord], nextRecords));
   };
 
   const deleteCreature = async (id: string) => {
@@ -1418,6 +1497,7 @@ export default function StatblockEditor() {
   const renderStatblockPng = async (
     item: Creature,
     exportTheme: "parchment" | "dark",
+    exportColumnMode: StatblockColumnMode,
     pixelRatio = 2,
   ) => {
     const mount = document.createElement("div");
@@ -1427,7 +1507,13 @@ export default function StatblockEditor() {
     let rootMounted = true;
     let captureMount: HTMLDivElement | null = null;
     try {
-      root.render(<StatblockPreview creature={item} theme={exportTheme} />);
+      root.render(
+        <StatblockPreview
+          creature={item}
+          theme={exportTheme}
+          columnMode={exportColumnMode}
+        />,
+      );
       await document.fonts.ready;
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const renderedStatblock = mount.querySelector(".statblock") as HTMLElement;
@@ -1459,7 +1545,7 @@ export default function StatblockEditor() {
       const secondColumn = children.filter(
         (child) => child.getBoundingClientRect().left > flowBounds.left + flowBounds.width / 2,
       );
-      if (secondColumn.length) {
+      if (statblock.dataset.columnLayout === COLUMN_MODE.DOUBLE && secondColumn.length) {
         const secondColumnSet = new Set(secondColumn);
         const first = document.createElement("div");
         const second = document.createElement("div");
@@ -1495,7 +1581,7 @@ export default function StatblockEditor() {
     if (exporting) return;
     setExporting(true);
     try {
-      const dataUrl = await renderStatblockPng(creature, theme, 2);
+      const dataUrl = await renderStatblockPng(creature, theme, columnMode, 2);
       download(dataUrl, `${slugify(creature.name)}.png`);
       showNotice("Image exported");
     } catch {
@@ -1505,8 +1591,8 @@ export default function StatblockEditor() {
     }
   };
 
-  const creaturePng = async (item: Creature) => {
-    const dataUrl = await renderStatblockPng(item, "parchment", 1.5);
+  const creaturePng = async (item: Creature, itemColumnMode: StatblockColumnMode) => {
+    const dataUrl = await renderStatblockPng(item, "parchment", itemColumnMode, 1.5);
     return dataUrl.split(",")[1];
   };
 
@@ -1524,7 +1610,11 @@ export default function StatblockEditor() {
         zip.file(`yaml/${name}.md`, fenced);
         combined.push(`# ${record.creature.name}\n\n${fenced}`);
         try {
-          zip.file(`images/${name}.png`, await creaturePng(record.creature), { base64: true });
+          zip.file(
+            `images/${name}.png`,
+            await creaturePng(record.creature, normalizeColumnMode(record.columnMode)),
+            { base64: true },
+          );
         } catch {
           zip.file(`images/${name}-export-note.txt`, "Image export could not include this creature. Its YAML is available in the yaml folder.");
         }
@@ -1622,7 +1712,7 @@ export default function StatblockEditor() {
             ))}
           </select>
           <button className="button" type="button" onClick={() => createCreature()}>New</button>
-          <button className="button" type="button" onClick={() => createCreature({ ...creature, name: `${creature.name} Copy` })}>Duplicate</button>
+          <button className="button" type="button" onClick={() => createCreature({ ...creature, name: `${creature.name} Copy` }, columnMode)}>Duplicate</button>
           <button className="button" type="button" onClick={() => setBestiaryOpen(true)}>Bestiary</button>
         </div>
         <div className="toolbar">
@@ -1866,6 +1956,15 @@ export default function StatblockEditor() {
                 <option value="parchment">Parchment</option>
                 <option value="dark">Dark</option>
               </select>
+              <select
+                aria-label="Preview columns"
+                value={columnMode}
+                onChange={(event) => void updateColumnMode(event.target.value as StatblockColumnMode)}
+              >
+                <option value="auto">Auto</option>
+                <option value="single">1 column</option>
+                <option value="double">2 columns</option>
+              </select>
               <select aria-label="Preview zoom" value={previewScale} onChange={(event) => setPreviewScale(Number(event.target.value))}>
                 <option value="75">75%</option><option value="90">90%</option><option value="100">100%</option><option value="115">115%</option>
               </select>
@@ -1873,7 +1972,12 @@ export default function StatblockEditor() {
           </div>
           <div className="preview-scroll">
             <div className="preview-scale" style={{ width: `${10000 / previewScale}%`, transform: `scale(${previewScale / 100})` }}>
-              <StatblockPreview creature={creature} theme={theme} elementRef={previewRef} />
+              <StatblockPreview
+                creature={creature}
+                theme={theme}
+                columnMode={columnMode}
+                elementRef={previewRef}
+              />
             </div>
           </div>
         </section>

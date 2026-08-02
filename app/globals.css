@@ -708,6 +708,29 @@ button {
   column-fill: balance;
 }
 
+.statblock-layout-single {
+  width: 460px;
+  max-width: 100%;
+}
+
+.statblock-layout-single .statblock-flow,
+.statblock-measure-single .statblock-flow {
+  column-width: auto;
+  column-count: 1;
+}
+
+.statblock-layout-double {
+  width: 920px;
+  min-width: 920px;
+  max-width: none;
+}
+
+.statblock.statblock-measure-single {
+  width: 460px;
+  min-width: 460px;
+  max-width: 460px;
+}
+
 .statblock-summary {
   break-inside: avoid-column;
 }
@@ -1335,6 +1358,18 @@ button {
   max-width: none;
   margin: 0;
   transform: none;
+}
+
+.export-render .statblock-layout-single,
+.export-render .statblock.statblock-measure-single {
+  width: 460px;
+  min-width: 460px;
+  max-width: 460px;
+}
+
+.export-render .statblock-layout-double {
+  width: 920px;
+  min-width: 920px;
 }
 
 .site-dark .builder-row input,

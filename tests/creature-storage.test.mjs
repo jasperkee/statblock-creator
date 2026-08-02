@@ -135,3 +135,28 @@ test("reports blocked reset attempts and retains fallback data when recreation f
   assert.equal(result.mode, STORAGE_MODE.FALLBACK);
   assert.deepEqual(fallback.records(), snapshot);
 });
+
+test("keeps per-creature column modes when newer fallback records recover", async () => {
+  const primary = fakeStore([{
+    ...creature("shared", 1, "Old"),
+    columnMode: "double",
+  }]);
+  const fallback = fakeStore([{
+    ...creature("shared", 2, "New"),
+    columnMode: "single",
+  }, {
+    ...creature("automatic", 1),
+    columnMode: "auto",
+  }]);
+  const storage = createResilientCreatureStorage(primary, fallback);
+
+  const loaded = await storage.load([]);
+  assert.equal(loaded.mode, STORAGE_MODE.PRIMARY);
+  assert.deepEqual(
+    loaded.records.map(({ id, columnMode }) => ({ id, columnMode })),
+    [
+      { id: "shared", columnMode: "single" },
+      { id: "automatic", columnMode: "auto" },
+    ],
+  );
+});
