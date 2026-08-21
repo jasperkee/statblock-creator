@@ -51,3 +51,19 @@ test("keeps website-link importing out of the default build", async () => {
   assert.doesNotMatch(source, /5etools Link/);
   assert.doesNotMatch(source, /main\/data\/bestiary/);
 });
+
+test("includes the encounter calculator only when its build flag is enabled", async () => {
+  const assets = new URL("../dist/assets/", import.meta.url);
+  const source = (await Promise.all(
+    (await readdir(assets))
+      .filter((name) => name.endsWith(".js"))
+      .map((name) => readFile(new URL(name, assets), "utf8")),
+  )).join("\n");
+  if (process.env.VITE_ENABLE_ENCOUNTER_CALCULATOR === "true") {
+    assert.match(source, /Encounter Calculator/);
+    assert.match(source, /Estimated difficulty/);
+  } else {
+    assert.doesNotMatch(source, /Encounter Calculator/);
+    assert.doesNotMatch(source, /statblock-creator-encounter-calculator-v1/);
+  }
+});

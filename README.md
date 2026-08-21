@@ -62,5 +62,17 @@ Local YAML and 5etools-compatible JSON imports remain available when this flag
 is disabled. The link importer only accepts standard 5e.tools bestiary links and
 contacts the external 5etools GitHub mirror from the browser.
 
+### Optional 2024 encounter calculator
+
+The CR-and-quantity encounter calculator is disabled by default. Enable its
+toolbar button at build time with:
+
+```bash
+VITE_ENABLE_ENCOUNTER_CALCULATOR=true npm run build
+```
+
+The calculator uses the 2024 XP budgets and stores its latest setup only in the
+current browser.
+
 Deploy the generated `dist/` folder to any static host, including Cloudflare
 Pages, GitHub Pages, Netlify, or Vercel static hosting.

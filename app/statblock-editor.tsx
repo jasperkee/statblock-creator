@@ -4,8 +4,10 @@ import {
   ChangeEvent,
   Fragment,
   KeyboardEvent as ReactKeyboardEvent,
+  lazy,
   MutableRefObject,
   ReactNode,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -60,6 +62,11 @@ const ENABLE_5ETOOLS_URL_IMPORT =
   import.meta.env.VITE_ENABLE_5ETOOLS_URL_IMPORT === "true";
 const loadFiveToolsUrlImporter = ENABLE_5ETOOLS_URL_IMPORT
   ? () => import("./5etools-url-import")
+  : null;
+const ENABLE_ENCOUNTER_CALCULATOR =
+  import.meta.env.VITE_ENABLE_ENCOUNTER_CALCULATOR === "true";
+const EncounterCalculatorLauncher = ENABLE_ENCOUNTER_CALCULATOR
+  ? lazy(() => import("./encounter-calculator/encounter-calculator"))
   : null;
 
 type ImportTab = "yaml" | "json" | "link";
@@ -1718,6 +1725,11 @@ export default function StatblockEditor() {
         </div>
         <div className="toolbar">
           <input ref={imageInput} className="hidden-input" type="file" accept="image/*" onChange={handleImage} />
+          {EncounterCalculatorLauncher ? (
+            <Suspense fallback={null}>
+              <EncounterCalculatorLauncher />
+            </Suspense>
+          ) : null}
           <a
             className="icon-button source-link toolbar-separator"
             href="https://github.com/jasperkee/statblock-creator"
