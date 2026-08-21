@@ -12,11 +12,14 @@ async function exists(path) {
   }
 }
 
-test("builds Statblock Creator as a static SPA", async () => {
+test("builds Statblock Creator as a static SPA with a Sites asset worker", async () => {
   const html = await readFile(new URL("../dist/index.html", import.meta.url), "utf8");
+  const worker = await readFile(new URL("../dist/server/index.js", import.meta.url), "utf8");
   assert.match(html, /<title>Statblock Creator<\/title>/i);
   assert.match(html, /\/assets\/index-[^"]+\.js/);
-  assert.equal(await exists(new URL("../dist/server/index.js", import.meta.url)), false);
+  assert.equal(await exists(new URL("../dist/server/index.js", import.meta.url)), true);
+  assert.match(worker, /env\.ASSETS\.fetch/);
+  assert.match(worker, /\/index\.html/);
   assert.doesNotMatch(html, /codex-preview/);
   assert.doesNotMatch(html, /react-loading-skeleton/);
 });
