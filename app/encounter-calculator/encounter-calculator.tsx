@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   calculateEncounter,
   createDefaultEncounter,
@@ -68,6 +69,7 @@ export function EncounterCalculatorLauncher() {
   const launcherRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const [open, setOpen] = useState(false);
+  const [darkPortal, setDarkPortal] = useState(false);
   const [state, setState] = useState<EncounterState>(() =>
     loadEncounterState(globalThis.localStorage, newGroupId()) as EncounterState,
   );
@@ -81,6 +83,11 @@ export function EncounterCalculatorLauncher() {
     setOpen(false);
     window.setTimeout(() => launcherRef.current?.focus(), 0);
   }, []);
+
+  const openCalculator = () => {
+    setDarkPortal(Boolean(launcherRef.current?.closest(".site-dark")));
+    setOpen(true);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -138,11 +145,15 @@ export function EncounterCalculatorLauncher() {
         ref={launcherRef}
         className="button"
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openCalculator}
       >Encounter Calculator</button>
 
-      {open ? (
-        <div className="encounter-backdrop" role="presentation" onMouseDown={close}>
+      {open ? createPortal(
+        <div
+          className={`encounter-backdrop ${darkPortal ? "site-dark" : ""}`}
+          role="presentation"
+          onMouseDown={close}
+        >
           <section
             ref={dialogRef}
             className="encounter-modal"
@@ -210,26 +221,18 @@ export function EncounterCalculatorLauncher() {
                         ...current,
                         opponents: [...current.opponents, createOpponentGroup(newGroupId()) as OpponentGroup],
                       }))}
-                    >+ Add group</button>
+                    >+ Add creatures</button>
                   </div>
 
                   <div className="encounter-opponent-list">
                     {state.opponents.length ? state.opponents.map((opponent, index) => {
                       const eachXp = opponent.cr === "0" ? opponent.cr0Xp : CR_XP[opponent.cr];
                       return (
-                        <article className="encounter-opponent" key={opponent.id}>
-                          <div className="encounter-opponent-title">
-                            <strong>Group {index + 1}</strong>
-                            <button
-                              className="encounter-remove"
-                              type="button"
-                              aria-label={`Remove opponent group ${index + 1}`}
-                              onClick={() => setState((current) => ({
-                                ...current,
-                                opponents: current.opponents.filter((item) => item.id !== opponent.id),
-                              }))}
-                            >Remove</button>
-                          </div>
+                        <article
+                          className="encounter-opponent"
+                          aria-label={`Creature row ${index + 1}`}
+                          key={opponent.id}
+                        >
                           <div className="encounter-opponent-controls">
                             <label>
                               <span>Challenge Rating</span>
@@ -243,7 +246,7 @@ export function EncounterCalculatorLauncher() {
                             <div className="encounter-control-group">
                               <span>Creatures</span>
                               <Stepper
-                                label={`creatures in group ${index + 1}`}
+                                label={`creatures in row ${index + 1}`}
                                 value={opponent.quantity}
                                 minimum={1}
                                 maximum={99}
@@ -254,6 +257,15 @@ export function EncounterCalculatorLauncher() {
                               <span>{formatXp(eachXp)} XP each</span>
                               <strong>{formatXp(xpForOpponent(opponent))} XP</strong>
                             </div>
+                            <button
+                              className="encounter-remove"
+                              type="button"
+                              aria-label={`Remove creature row ${index + 1}`}
+                              onClick={() => setState((current) => ({
+                                ...current,
+                                opponents: current.opponents.filter((item) => item.id !== opponent.id),
+                              }))}
+                            >Remove</button>
                           </div>
                           {opponent.cr === "0" ? (
                             <fieldset className="encounter-cr-zero">
@@ -272,7 +284,7 @@ export function EncounterCalculatorLauncher() {
                         </article>
                       );
                     }) : (
-                      <div className="encounter-empty">No opponents yet. Add a group to start calculating.</div>
+                      <div className="encounter-empty">No opponents yet. Add creatures to start calculating.</div>
                     )}
                   </div>
                 </section>
@@ -322,7 +334,8 @@ export function EncounterCalculatorLauncher() {
               <button className="button primary" type="button" onClick={close}>Done</button>
             </footer>
           </section>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </>
   );

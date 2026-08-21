@@ -3,6 +3,9 @@
   z-index: 70;
   inset: 0;
   display: grid;
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
   padding: 20px;
   background: rgba(24, 20, 16, .6);
   place-items: center;
@@ -11,7 +14,7 @@
 .encounter-modal {
   display: flex;
   width: min(980px, 100%);
-  max-height: min(92vh, 880px);
+  max-height: min(calc(100dvh - 40px), 880px);
   overflow: hidden;
   color: var(--ink);
   background: var(--surface);
@@ -24,7 +27,6 @@
 .encounter-head,
 .encounter-actions,
 .encounter-section-head,
-.encounter-opponent-title,
 .encounter-budget > div {
   display: flex;
   align-items: center;
@@ -33,6 +35,7 @@
 }
 
 .encounter-head {
+  flex: 0 0 auto;
   padding: 20px 22px 16px;
   border-bottom: 1px solid var(--line);
 }
@@ -68,8 +71,10 @@
 
 .encounter-layout {
   display: grid;
+  flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   grid-template-columns: minmax(0, 1.45fr) minmax(280px, .75fr);
 }
 
@@ -174,32 +179,36 @@
 
 .encounter-opponent-list {
   display: grid;
-  gap: 10px;
+  gap: 7px;
 }
 
 .encounter-opponent {
-  padding: 13px;
+  padding: 9px;
   background: var(--surface-soft);
   border: 1px solid var(--line);
   border-radius: 10px;
 }
 
-.encounter-opponent-title {
-  margin-bottom: 10px;
-}
-
 .encounter-remove {
-  padding: 3px 0;
+  min-height: 36px;
+  padding: 0 8px;
   color: var(--danger);
   background: transparent;
-  border: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 700;
 }
 
+.encounter-remove:hover {
+  background: var(--surface);
+  border-color: var(--line);
+}
+
 .encounter-opponent-controls {
   align-items: end;
-  grid-template-columns: minmax(135px, 1fr) minmax(150px, 1fr) minmax(100px, auto);
+  gap: 8px;
+  grid-template-columns: minmax(125px, 1fr) minmax(140px, 1fr) minmax(90px, auto) auto;
 }
 
 .encounter-row-total {
@@ -344,6 +353,7 @@
 .encounter-caveat a { color: var(--accent-deep); font-weight: 700; }
 
 .encounter-actions {
+  flex: 0 0 auto;
   padding: 13px 22px;
   border-top: 1px solid var(--line);
 }
@@ -355,10 +365,11 @@
 
 @media (max-width: 560px) {
   .encounter-backdrop { padding: 0; }
-  .encounter-modal { width: 100%; max-height: 100vh; min-height: 100vh; border: 0; border-radius: 0; }
+  .encounter-modal { width: 100%; height: 100dvh; max-height: 100dvh; min-height: 100dvh; border: 0; border-radius: 0; }
   .encounter-head, .encounter-builder, .encounter-results, .encounter-actions { padding-right: 16px; padding-left: 16px; }
   .encounter-party-controls { grid-template-columns: 1fr; }
   .encounter-opponent-controls { grid-template-columns: 1fr 1fr; }
-  .encounter-row-total { grid-column: 1 / -1; justify-items: start; }
+  .encounter-row-total { grid-column: 1; justify-items: start; }
+  .encounter-remove { align-self: center; justify-self: end; }
   .encounter-section-head { align-items: flex-start; }
 }
